@@ -4,6 +4,7 @@ import os
 import time
 import numpy as np
 import pandas as pd
+from tqdm.auto import tqdm
 
 # downlaod the data
 from selenium import webdriver
@@ -12,11 +13,16 @@ import shutil
 # read in the data
 import tarfile
 
-# for the Naive Bayes model
-from sklearn.naive_bayes import MultinomialNB
-
 # for evaluation
-from sklearn import metrics
+from sklearn.metrics import accuracy_score, confusion_matrix
+
+# for plotting
+import matplotlib.pyplot as plt
+
+# models needed for modelling
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 
 def get_download_folder():
@@ -201,17 +207,18 @@ def get_document_preview(document, max_length):
 
 
 # -----------------------------
-# NAIVE BAYES WITH SCIKIT-LEARN
+# Class to define the model
 # -----------------------------
 
-class Naive_Bayes:
+class Model:
     
-    def __init__(self, clip_counts=True):
+    def __init__(self, model, clip_counts=True, ngram_size=1):
         self.vocab = set()
         self.token_to_vocab_index_dict = {}
-        self.model = MultinomialNB()
 
+        self.model = model
         self.clip_counts = clip_counts
+        self.ngram_size = ngram_size
 
 
     def extract_document_features(self, data_with_labels):
@@ -237,7 +244,9 @@ class Naive_Bayes:
         doc_index = 0
         for document, _ in data_with_labels:
             for sentence in document:
-                for token in sentence:
+                for i in range(len(sentence) - (self.ngram_size - 1)):
+                    # get each word pattern of size 'self.ngram_size'
+                    token = " ".join(sentence[i: i+self.ngram_size])
 
                     # get the vocab index for this row
                     try:
@@ -271,7 +280,9 @@ class Naive_Bayes:
         # define a set of all the vocabulary in the data using the input list of documents
         for document, _ in data_with_labels:
             for sentence in document:
-                for token in sentence:
+                for i in range(len(sentence) - (self.ngram_size - 1)):
+                    # add each word pattern of size 'self.ngram_size'
+                    token = " ".join(sentence[i: i+self.ngram_size])
                     self.vocab.add(token)
 
         # create reverse map for fast token lookup
@@ -361,7 +372,7 @@ def evaluate_predictions(test_data, y_pred):
     y_true = get_targets(test_data)
 
     # get an accuracy score for these predictions and also get a confusion matrix
-    return metrics.accuracy_score(y_true, binary_y_pred), metrics.confusion_matrix(y_true, binary_y_pred)
+    return accuracy_score(y_true, binary_y_pred), confusion_matrix(y_true, binary_y_pred)
 
 
 def print_first_n_predictions(model, test_data, num_predictions, len_preview):
@@ -400,25 +411,46 @@ def print_first_n_predictions(model, test_data, num_predictions, len_preview):
     return pred_df.reset_index(drop=True)
 
 
-def evaluate_model(model, train_test_tuples, verbose=False):
+def define_models_with_params(model_dict, ngram_size_dict, clip_counts_dict):
+
+    models_to_compare = {}
+    for model_to_use, model_to_use_name in model_dict.items():
+        for ngram_size, ngram_size_name in ngram_size_dict.items():
+            for clip_count_bool, clip_counts_bool_name in clip_counts_dict.items():
+                # create a dictionary mapping this models name to the defined model
+                defined_model_name =  "{} {} {}".format(ngram_size_name, model_to_use_name, clip_counts_bool_name)
+                defined_model = py.Model(model=model_to_use, clip_counts=clip_count_bool, ngram_size=ngram_size)
+                models_to_compare[defined_model_name] = defined_model
+
+    return models_to_compare
+
+
+def evaluate_model(model_name, model, train_test_tuples, fold_verbose=False, plot_folds=False):
 
     '''
     Evalute the model by using cross validation to train the model on the different training sets and
     generating a prediction on the test sets
     
     Params:
+        model_name: string - the name of the model we are evaluating
         model: Class - a class that defines a model
         train_test_tuples: list: - a list of 'k' training and test set tuples - eg. (training_data_1, test_data_1)
-        verbose: boolean - whether we want to print the model accuracy scores as we go along in trining the model on them
+        fold_verbose: boolean - whether we want to print the model accuracy scores of each fold as we go along in trining the model on them
+        plot_folds: boolean - whether we want to output a plot of the time each fold took and the accuracy each fold god
 
     Returns:
         tuple of ints: (the average model accuracy, the max accuracy, the min accuracy) across all train-test sets we trained on
     '''
 
+    # set up the dataframe we output with the evaluation summary statistics
+    fold_eval_df = pd.DataFrame()
+
     # iterate through the cross validation train-test sets
-    accuracies = []
-    fold = 1
+    fold_accuracies, fold_durations = [], []
+    eval_start = time.time()
+    fold_num = 1
     for train_data, test_data in train_test_tuples:
+        iteration_start = time.time()
 
         # train the model on each set as we iterate
         model.train(train_data)
@@ -426,16 +458,90 @@ def evaluate_model(model, train_test_tuples, verbose=False):
         # get an accuracy score for the trained model
         predictions = model.predict(test_data)
         accuracy, _ = evaluate_predictions(test_data, predictions)
-        accuracies.append(accuracy)
+        fold_accuracies.append(accuracy)
+        iteration_duration = time.time() - iteration_start
+
+        # add the results from this fold to the fold evalutation dataframe
+        fold_results_dict = {'model_name':model_name, 'fold_no':fold_num, 'fold_time':iteration_duration, 'fold_accuracy':accuracy}
+        fold_eval_df = pd.concat([fold_eval_df, pd.DataFrame(fold_results_dict, index=[0])], axis=0).reset_index(drop=True)
+        fold_num += 1
 
         # output the model accuracy if requested
-        if verbose:
-            print('Fold {} of {} --> {}'.format(fold, len(train_test_tuples), accuracy))
-            fold += 1
+        if fold_verbose:
+            print("   Fold {} - {} seconds --> Accuracy score = {}".format(fold_num-1, round(iteration_duration), accuracy))
+
+    # plot the fold evaluation results if requested
+    if plot_folds:
+        plot_fold_eval_scores(fold_eval_df)
 
     # create the evalutation summary statistics for this model
-    n = float(len(accuracies))
-    avg = sum(accuracies) / n
-    mse = sum([(x-avg)**2 for x in accuracies]) / n
+    n = float(len(fold_accuracies))
+    avg = sum(fold_accuracies) / n
+    mse = sum([(x-avg)**2 for x in fold_accuracies]) / n
+    eval_duration = time.time() - eval_start
 
-    return avg, mse**0.5, min(accuracies), max(accuracies)
+    # create a datframe with one row summarising the model evaluation
+    eval_df = pd.DataFrame({'Model':model_name, 'Avg Accuracy':avg, 'Root Mean Squared Error':mse**0.5, 'Min Accuracy':min(fold_accuracies), 'Max Accuracy':max(fold_accuracies), 'Total Time (s)':round(eval_duration, 2), "All Fold Averages":str(fold_accuracies)}, index=[0])
+    return eval_df
+
+
+def plot_fold_eval_scores(fold_eval_df):
+
+    fig = plt.figure()
+    gs = fig.add_gridspec(nrows=2, hspace=0)
+    axes1, axes2 = gs.subplots(sharex=True)
+
+    # set the axes names
+    axes1.set_ylabel('Fold Time (s)')
+    axes2.set_ylabel('Fold Accuracy')
+    axes2.set_xlabel('Fold No.')
+
+    # plot the evaluation scores
+    axes1.plot(fold_eval_df['fold_no'], fold_eval_df['fold_time'])
+    axes2.plot(fold_eval_df['fold_no'], fold_eval_df['fold_accuracy'])
+    #axes2.set_ylim([0, 1])
+    plt.show()
+
+
+def main():
+
+    # define the location of my chromedriver
+    chromedriver_location = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chromedriver.exe'
+
+    # Load the data
+    data_dict = load_data('data', chromedriver_location)
+
+    # Create the train-test split for cross-validation
+    train_test_splits = get_train_test_splits(data_dict)
+
+    # Choose the models to use and the parameters to experiment with
+    model_dict = {MultinomialNB(): "Naive Bayes",
+                  LogisticRegression(multi_class='multinomial', solver='lbfgs', max_iter=200): "Logistic Regression",
+                  SGDClassifier(): "Support Vector Machine",
+                  RandomForestClassifier(): "Random Forest",
+                 }
+    clip_counts_dict = {True: "with clip counts",
+                        False: "no clip counts",
+                       }
+    ngram_size_dict = {1: "Unigram",
+                       2: "Bigram",
+                       3: "Trigram",
+                      }
+
+    # Define the models with the varying parameters
+    models_to_compare = define_models_with_params(model_dict, ngram_size_dict, clip_counts_dict)
+
+    # Train & test these models to compare them
+    eval_df = pd.DataFrame()
+    for model_name, model in tqdm(models_to_compare.items()):
+        print("\n" + model_name)
+        model_eval_df = evaluate_model(model_name, model, train_test_splits, fold_verbose=False, plot_folds=True)
+        eval_df = pd.concat([eval_df, model_eval_df], axis=0).reset_index(drop=True)
+            
+    # Store the model results in a CSV
+    filepath = os.path.join("data", "model_evaluation_scores.csv")
+    eval_df.to_csv(filepath, index=False)
+
+
+if __name__ == '__main__':
+    main()
