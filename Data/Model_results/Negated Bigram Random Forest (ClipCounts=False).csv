@@ -1,2 +1,0 @@
-Full Name,Data Type,Ngram,Model,Clip Counts,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
-Negated Bigram Random Forest (ClipCounts=False),Negated,Bigram,Random Forest,False,0.7615000000000002,0.0375532954612507,0.685,0.815,1089.17,"[0.76, 0.775, 0.685, 0.75, 0.73, 0.815, 0.81, 0.73, 0.775, 0.785]"
