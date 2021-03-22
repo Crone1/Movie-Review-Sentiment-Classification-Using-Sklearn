@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+Original Bigram Stochastic Gradient Descent Classifier (ClipCounts=True),Original,Bigram,Stochastic Gradient Descent Classifier,True,0.8225,0.019525624,0.775,0.845,733.31,"[0.815, 0.835, 0.825, 0.81, 0.815, 0.83, 0.83, 0.775, 0.845, 0.845]"

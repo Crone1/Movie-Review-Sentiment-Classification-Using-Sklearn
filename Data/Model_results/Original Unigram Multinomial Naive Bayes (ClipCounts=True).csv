@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+Original Unigram Multinomial Naive Bayes (ClipCounts=True),Original,Unigram,Multinomial Naive Bayes,True,0.828,0.019390719,0.785,0.855,37.98,"[0.805, 0.835, 0.84, 0.82, 0.835, 0.825, 0.845, 0.835, 0.785, 0.855]"

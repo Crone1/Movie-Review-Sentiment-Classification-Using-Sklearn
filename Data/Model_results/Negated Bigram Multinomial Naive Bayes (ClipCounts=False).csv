@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+Negated Bigram Multinomial Naive Bayes (ClipCounts=False),Negated,Bigram,Multinomial Naive Bayes,False,0.8474999999999999,0.0291761889217903,0.8,0.895,234.43,"[0.8, 0.895, 0.83, 0.86, 0.815, 0.835, 0.875, 0.845, 0.835, 0.885]"
