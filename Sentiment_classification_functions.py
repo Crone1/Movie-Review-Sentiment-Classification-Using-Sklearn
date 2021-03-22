@@ -19,10 +19,15 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 # for plotting
 import matplotlib.pyplot as plt
 
+# package for lemmatisation
+import spacy
+
 # models needed for modelling
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
 
 
 def get_download_folder():
@@ -51,7 +56,7 @@ def load_data(data_directory, chromedriver_location):
 
     Return:
         dictionary - this maps a tuple to a list of lists
-                   - (cross validation fold, document label): [[list of tokens in doc1], [list of tokens in doc2], ...]
+                   - {(cross validation fold, document label): [[list of tokens in doc1], [list of tokens in doc2], ...], ...}
     '''
 
     # get the path to where the file should be
@@ -73,7 +78,6 @@ def load_data(data_directory, chromedriver_location):
         shutil.move(current_file_location, path_to_tar)
 
     # we now know the file exists in our directory so can read the data from it
-    counter = 0
     with open(path_to_tar, 'rb') as tgz_stream:
         data = {}
         with tarfile.open(mode='r|gz', fileobj=tgz_stream) as tar_archive:
@@ -95,13 +99,91 @@ def load_data(data_directory, chromedriver_location):
                     if key not in data:
                         data[key] = []
 
-                    # obtain the document and store it in the dictionary
+                    # obtain the document, split it into sentences and words, and store it in the dictionary
                     f = tar_archive.extractfile(tar_member)
                     document = [line.decode('utf-8').split() for line in f.readlines()]
                     data[key].append(document)
-                    counter += 1
 
     return data
+
+
+def lemmatise_the_data(data_dict):
+
+    """
+    Iterate through the input dictionary of data and lemmatise each word in this input dictionary.
+    The output is the same as the input except the tokens are lemmatised.
+
+    Params:
+        data_dict: dictionary - this dictionary maps a tuple to a list of lists containing tokens
+
+    Return:
+        dictionary - this maps a tuple to a list of lists containing lemmatised tokens
+                   - {(cross validation fold, document label): [[list of tokens in doc1], [list of tokens in doc2], ...], ..}
+    """
+
+    # load the spacy english language text processor & disable certain piplines to speed up the lemmatisation process
+    nlp = spacy.load("en_core_web_sm", disable=['parser', 'ner'])
+
+    # iterate through the data
+    lemmatised_data_dict = {}
+    for key, list_of_docs in tqdm(data_dict.items()):
+        lemmatised_docs = []
+        for doc in list_of_docs:
+            # lemmatise the words in the document
+            lemmatised_document = [[token.lemma_ for token in nlp(" ".join(sentence_list))] for sentence_list in doc]
+            lemmatised_docs.append(lemmatised_document)
+
+        # add these lemmatised documents to a dictionary of the lemmatised data
+        lemmatised_data_dict[key] = lemmatised_docs
+
+    return lemmatised_data_dict
+
+
+def handle_negation_in_the_data(data_dict):
+
+    """
+    Iterate through the input dictionary of data and handle negated words in this input dictionary.
+    The output is the same as the input except some tokens now have the prefix 'NOT_' if they appear after a negative word.
+
+    Params:
+        data_dict: dictionary - this dictionary maps a tuple to a list of lists containing tokens
+
+    Return:
+        dictionary - this maps a tuple to a list of lists containing negation handled tokens
+                   - {(cross validation fold, document label): [[list of tokens in doc1], [list of tokens in doc2], ...], ..}
+    """
+
+    # iterate through the data
+    negated_data_dict = {}
+    for key, list_of_docs in data_dict.items():
+        negated_docs = []
+        for doc in list_of_docs:
+            negated_sentences = []
+            for sentence in doc:
+                negate_next = False
+                negated_tokens = []
+                for token in sentence:
+                    # check if we should stop the negation
+                    if token in [",", ".", ":", ";", "?", "!"]:
+                        negate_next = False
+
+                    # add the negated / not negated word to the sentence
+                    if negate_next:
+                        negated_tokens.append("NOT_"+token)
+                    else:
+                        negated_tokens.append(token)
+
+                    # check if we should start negating the next words
+                    if token in ["not", "no"] or "n't" in token:
+                        negate_next = True
+
+                negated_sentences.append(negated_tokens)
+            negated_docs.append(negated_sentences)
+
+        # add these lemmatised documents to a dictionary of the lemmatised data
+        negated_data_dict[key] = negated_docs
+
+    return negated_data_dict
 
 
 def get_documents(data_dict, fold, label):
@@ -121,6 +203,73 @@ def get_documents(data_dict, fold, label):
     return data_dict[(fold, label)]
 
 
+def get_document_preview(document, max_length, sep):
+
+    '''
+    Preview a given number of characters from a given document
+
+    Params:
+        document: list of lists - a list of all tokens in a list of all sentences in a specified document
+        max_length: int - the maximum number of characters to be output in our preview string
+        sep: string - the string used to join the words in the document together in the output - can be a space (" ") or pipe ("|") or other string
+
+    Returns:
+        string - a preview of the specified document that is less than 'max_length' characters long
+    '''
+
+    # iterate through the tokens in the document
+    char_count = 0
+    reached_limit = False
+    preview_words = []
+    for sentence in document:
+        for token in sentence:
+
+            # check if adding this character would create a string bigger than desired
+            if char_count + len(token) + len(preview_words) > max_length:
+                reached_limit = True
+                break
+
+            # add this token to the list of words in our preview
+            preview_words.append(token)
+            char_count += len(token)
+
+        if reached_limit:
+            break
+
+    # create a string from the created list
+    return sep.join(preview_words)
+
+
+def preview_docs_with_fold_label_pair(data_dict, fold, label, max_length=50, sep=" "):
+
+    """
+    Get a preview of each document that falls under a specified fold & labal pair.
+
+    Params:
+        data_dict: dictionary - this dictionary maps a tuple to a list of lists containing tokens
+        fold: int - the cross validation fold that we want to get the documents for
+        label: string - the label that we want to get the documents for (pos/neg)
+        max_length: int - the maximum number of characters to be output in our preview string - defaults to 50
+        sep: string - the string used to join the words in the document together in the output - this defaults to space (" ") but can be pipe ("|") or other string
+
+    Returns:
+        dataframe - a table of the # documents associated with the specified fold & label pair, the # sentences in each document, and then the first 'max length' characters in this document.
+    """
+
+    preview_df = pd.DataFrame(columns=['doc_num', 'sentences', 'start_of_first_sentence'])
+    list_of_documents = get_documents(data_dict, fold, label)
+    for doc_num, document in enumerate(list_of_documents):
+
+        # get a preview of this document
+        doc_preview = get_document_preview(document, max_length=max_length, sep=sep)
+
+        # add this documents preview to a summary dataframe of all the documents
+        one_doc_preview_df = pd.DataFrame({'doc_num': doc_num, 'sentences': len(document), 'start_of_first_sentence': doc_preview}, index=[0])
+        preview_df = pd.concat([preview_df, one_doc_preview_df], axis=0).reset_index(drop=True)
+        
+    return preview_df
+
+
 def get_train_test_splits(data_dict):
 
     '''
@@ -130,7 +279,7 @@ def get_train_test_splits(data_dict):
         data_dict: dictionary - maps the cross validation fold & document label to the documents that fall under this fold-label
 
     Returns:
-        list: - a list of 'k' training and test set pairs
+        list: - a list of 'k' training and test cross validation set pairs
               - [(training_data_1, test_data_1), (training_data_2, test_data_2), ...]
     '''
 
@@ -160,7 +309,6 @@ def get_train_test_splits(data_dict):
         test_data = labelled_documents_in_folds[i]
         training_data = []
         for j in range(len(labelled_documents_in_folds) - 1):
-
             fold_num = (i + j + 1) % len(labelled_documents_in_folds)
             assert fold_num != i
             training_data.extend(labelled_documents_in_folds[fold_num])
@@ -170,40 +318,26 @@ def get_train_test_splits(data_dict):
     return train_test_tuples
 
 
-def get_document_preview(document, max_length):
+def count_docs_in_train_test_split(train_test_splits):
 
-    '''
-    Preview a given number of characters from a given document
+    """
+    Create a dataframe with the counts of the number of documents in each train and test set for each cross validation fold
 
     Params:
-        document: list of lists - a list of all tokens in a list of all sentences in a specified document
-        max_length: int - the maximum number of characters to be output in our preview string
+        train_test_splits: list - a list of 'k' training and test cross validation set pairs
+                                - [(training_data_1, test_data_1), (training_data_2, test_data_2), ...]
 
     Returns:
-        string - a preview of the specified document that is less than 'max_length' characters long
-    '''
-    preview_words = []
+        dataframe - A dataframe with the counts of the number of documents in each train & test set for each cross validation fold
+    """
 
-    # iterate through the tokens in the document
-    char_count = 0
-    reached_limit = False
-    for sentence in document:
-        for token in sentence:
+    num_docs_in_split = pd.DataFrame(columns=["train_set_size", "test_set_size"], index=range(len(train_test_splits)))
+    for i, (train_data, test_data) in enumerate(train_test_splits):
+        num_docs_in_split.loc[i, "train_set_size"] = len(train_data)
+        num_docs_in_split.loc[i, "test_set_size"] = len(test_data)
 
-            # check if adding this character would create a string bigger than desired
-            if char_count + len(token) + len(preview_words) > max_length:
-                reached_limit = True
-                break
+    return num_docs_in_split
 
-            # add this token to the list of words in our preview
-            preview_words.append(token)
-            char_count += len(token)
-
-        if reached_limit:
-            break
-
-    # create a string from the created list
-    return '|'.join(preview_words)
 
 
 # -----------------------------
@@ -213,9 +347,12 @@ def get_document_preview(document, max_length):
 class Model:
     
     def __init__(self, model, clip_counts=True, ngram_size=1):
+
+        # define the variables needed to train the model
         self.vocab = set()
         self.token_to_vocab_index_dict = {}
 
+        # define the parameters of this model instance
         self.model = model
         self.clip_counts = clip_counts
         self.ngram_size = ngram_size
@@ -224,15 +361,15 @@ class Model:
     def extract_document_features(self, data_with_labels):
 
         '''
-        Create a matrix of features which corresponds to the documents X the words in the vocabulary
-        The rows are the documents and the columns are the words
+        Create a matrix of features where the rows are all the documents and the columns are all the words
         We populate the matrix based on the occurances of the words in the documents
 
         Params:
+            self: instance of Model class
             data_with_labels: list - this is a list of tuples containing a document and it's corresponging label
 
         Returns:
-            numpy array - this is a matrix of features which corresponds to the documents X the words in the vocabulary
+            numpy array - this is the populated matrix of features which corresponds to the documents X the words in the vocabulary
         '''
 
         # create numpy array of required size
@@ -241,8 +378,7 @@ class Model:
         feature_matrix = np.zeros((rows, columns), dtype=np.int32)
 
         # Populate feature matrix
-        doc_index = 0
-        for document, _ in data_with_labels:
+        for doc_index, (document, _) in enumerate(data_with_labels):
             for sentence in document:
                 for i in range(len(sentence) - (self.ngram_size - 1)):
                     # get each word pattern of size 'self.ngram_size'
@@ -260,7 +396,6 @@ class Model:
                         feature_matrix[doc_index, vocab_index] = 1
                     else:
                         feature_matrix[doc_index, vocab_index] += 1
-            doc_index += 1
 
         return feature_matrix
 
@@ -271,7 +406,8 @@ class Model:
         Train the model on the given data
 
         Params:
-            data_with_labels: list - this is a list of tuples containing a document and it's corresponging label
+            self: instance of Model class
+            data_with_labels: list - this is a list of tuples containing a document and it's corresponding label
 
         Returns:
             None
@@ -305,12 +441,14 @@ class Model:
         Take in some test documents and generate a predicted label for these documents using the trained model
 
         Params:
+            self: instance of Model class
             test_data: list - a list of documents and their corresponding labels
 
         Returns:
             list - this is a list containing the models predicted labels for the given test set
         '''
 
+        # get the features of the document
         features = self.extract_document_features(test_data)
 
         # Get the predictions for model
@@ -336,7 +474,7 @@ def get_targets(data_with_labels):
         data_with_labels: list - this is a list of tuples containing a document and it's corresponging label
 
     Returns:
-        numpy array - a one column array of 1's and 0's stating if a document is labelled as pos/neg
+        numpy array - a one column array of 1's and 0's stating if a document is labelled as pos/neg respectively
     '''
 
     # prepare target vector
@@ -381,7 +519,7 @@ def print_first_n_predictions(model, test_data, num_predictions, len_preview):
     Use a model to generate a specified number of predictions and output a table containing the predicted label and the actual abel
 
     Params:
-        model: Class - a class that defines a model
+        model: scikit-learn model - a trained model
         test_data: list - a list of documents and their corresponding labels
         num_predictions: int - the number of prediction Vs actual rows we want in our output dataframe
         len_preview: int - the maximum number of characters to be output in our preview string
@@ -411,81 +549,61 @@ def print_first_n_predictions(model, test_data, num_predictions, len_preview):
     return pred_df.reset_index(drop=True)
 
 
-def define_models_with_params(model_dict, ngram_size_dict, clip_counts_dict):
+def define_models_with_params(model_dict, data_dict, ngram_size_dict, clip_counts_vals):
 
-    models_to_compare = {}
-    for model_to_use, model_to_use_name in model_dict.items():
-        for ngram_size, ngram_size_name in ngram_size_dict.items():
-            for clip_count_bool, clip_counts_bool_name in clip_counts_dict.items():
-                # create a dictionary mapping this models name to the defined model
-                defined_model_name =  "{} {} {}".format(ngram_size_name, model_to_use_name, clip_counts_bool_name)
-                defined_model = py.Model(model=model_to_use, clip_counts=clip_count_bool, ngram_size=ngram_size)
-                models_to_compare[defined_model_name] = defined_model
+    """
+    1. Take in multiple dictionaries and lists of the different values that can occur with different model parameters
+    2. Iterate through these dictionaries and lists
+    3. Create an instance of the model class for each of these different parameter combinations
+
+    Params:
+        model_dict: dictionary {str: model} - a map from a model name to a defined scikit-learn model
+        data_dict: dictionary {tuple, list} - maps the cross validation fold & document label to the documents that fall under this fold & label pair
+        ngram_size_dict: dictionary {str: int} - map the name of an ngram size to an integer of the number of tokens contained in that ngram
+        clip_counts_vals: list - this list contains a list of the boolean values we want to test for whether to clip the word counts or not
+
+    Returns:
+        list of tuples - the tuples contain a dictionary of the models parameters and an instance of the model class with these parameters
+                       - [(parameter dictionary, instance of model class), ....]
+    """
+
+    # iterate through all the combinations of parameters for these models
+    models_to_compare = []
+    for model_to_use_name, model_to_use in model_dict.items():
+        for data_type_name, data in data_dict.items():
+            for ngram_size_name, ngram_size in ngram_size_dict.items():
+                for clip_count_bool in clip_counts_vals:
+
+                    # define a model name using all the parameters
+                    model_full_name = '{} {} {} (ClipCounts={})'.format(data_type_name, ngram_size_name, model_to_use_name, clip_count_bool)
+
+                    # create a dictionary mapping these models parameter names to their values
+                    params_dict = {"full_name":model_full_name, "model_name": model_to_use_name, "data_type": data_type_name, "ngram": ngram_size_name, "clip_counts": clip_count_bool}
+
+                    # define the model for these parameters
+                    model_instance = Model(model=model_to_use, clip_counts=clip_count_bool, ngram_size=ngram_size)
+
+                    # create a list of tuples - [(parameter dictionary, instance of model class), ....]
+                    models_to_compare.append((params_dict, model_instance))
+
+    print("============================================================================================================")
+    print("| There are a total of {} models that have been defined through different combinations of these parameters.|".format(len(models_to_compare)))
+    print("============================================================================================================")
 
     return models_to_compare
 
 
-def evaluate_model(model_name, model, train_test_tuples, fold_verbose=False, plot_folds=False):
+def plot_fold_eval_scores(fold_eval_df):
 
-    '''
-    Evalute the model by using cross validation to train the model on the different training sets and
-    generating a prediction on the test sets
-    
+    """
+    Create a plot of the evaluation scores and the time for each cross validation fold during the model training and evaluation process for a specific model
+
     Params:
-        model_name: string - the name of the model we are evaluating
-        model: Class - a class that defines a model
-        train_test_tuples: list: - a list of 'k' training and test set tuples - eg. (training_data_1, test_data_1)
-        fold_verbose: boolean - whether we want to print the model accuracy scores of each fold as we go along in trining the model on them
-        plot_folds: boolean - whether we want to output a plot of the time each fold took and the accuracy each fold god
+        fold_eval_df: dataframe - a dataframe containing a row for each fold tested and then a column for the time taken and the accuracy score achived
 
     Returns:
-        tuple of ints: (the average model accuracy, the max accuracy, the min accuracy) across all train-test sets we trained on
-    '''
-
-    # set up the dataframe we output with the evaluation summary statistics
-    fold_eval_df = pd.DataFrame()
-
-    # iterate through the cross validation train-test sets
-    fold_accuracies, fold_durations = [], []
-    eval_start = time.time()
-    fold_num = 1
-    for train_data, test_data in train_test_tuples:
-        iteration_start = time.time()
-
-        # train the model on each set as we iterate
-        model.train(train_data)
-
-        # get an accuracy score for the trained model
-        predictions = model.predict(test_data)
-        accuracy, _ = evaluate_predictions(test_data, predictions)
-        fold_accuracies.append(accuracy)
-        iteration_duration = time.time() - iteration_start
-
-        # add the results from this fold to the fold evalutation dataframe
-        fold_results_dict = {'model_name':model_name, 'fold_no':fold_num, 'fold_time':iteration_duration, 'fold_accuracy':accuracy}
-        fold_eval_df = pd.concat([fold_eval_df, pd.DataFrame(fold_results_dict, index=[0])], axis=0).reset_index(drop=True)
-        fold_num += 1
-
-        # output the model accuracy if requested
-        if fold_verbose:
-            print("   Fold {} - {} seconds --> Accuracy score = {}".format(fold_num-1, round(iteration_duration), accuracy))
-
-    # plot the fold evaluation results if requested
-    if plot_folds:
-        plot_fold_eval_scores(fold_eval_df)
-
-    # create the evalutation summary statistics for this model
-    n = float(len(fold_accuracies))
-    avg = sum(fold_accuracies) / n
-    mse = sum([(x-avg)**2 for x in fold_accuracies]) / n
-    eval_duration = time.time() - eval_start
-
-    # create a datframe with one row summarising the model evaluation
-    eval_df = pd.DataFrame({'Model':model_name, 'Avg Accuracy':avg, 'Root Mean Squared Error':mse**0.5, 'Min Accuracy':min(fold_accuracies), 'Max Accuracy':max(fold_accuracies), 'Total Time (s)':round(eval_duration, 2), "All Fold Averages":str(fold_accuracies)}, index=[0])
-    return eval_df
-
-
-def plot_fold_eval_scores(fold_eval_df):
+        Nonde
+    """
 
     fig = plt.figure()
     gs = fig.add_gridspec(nrows=2, hspace=0)
@@ -503,45 +621,166 @@ def plot_fold_eval_scores(fold_eval_df):
     plt.show()
 
 
-def main():
+def evaluate_model(model, model_params, train_test_tuples, fold_verbose=False, plot_folds=False):
 
-    # define the location of my chromedriver
-    chromedriver_location = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chromedriver.exe'
+    '''
+    Evaluate the model by using cross validation to train the model on the different training sets and then generating a prediction on the test sets
+    
+    Params:
+        model: class instance - an instance of the Model class defining a model with specified parameters
+        model_params: dictionary - this dictionary maps the parameter name to the name of the parameter configuration of the model we are evaluating
+        train_test_tuples: list: - a list of 'k' training and test set tuples - eg. (training_data_1, test_data_1)
+        fold_verbose: boolean - whether we want to print the model accuracy scores of each fold as we go along in trining the model on them
+        plot_folds: boolean - whether we want to output a plot of the time each fold took and the accuracy each fold god
 
-    # Load the data
-    data_dict = load_data('data', chromedriver_location)
+    Returns:
+        dataframe - a dataframe detailing the parameters of the model along with the evaluation scores for that model and the time it took to train & evaluate on all of the cross validation folds
+                  - this basically summarises the whole evaluation process
+    '''
 
-    # Create the train-test split for cross-validation
-    train_test_splits = get_train_test_splits(data_dict)
+    # extract the parameters
+    full_name = model_params["full_name"]
+    ngram = model_params["ngram"]
+    model_name = model_params["model_name"]
+    clip_counts = model_params["clip_counts"]
+    data_type = model_params["data_type"]
 
-    # Choose the models to use and the parameters to experiment with
-    model_dict = {MultinomialNB(): "Naive Bayes",
-                  LogisticRegression(multi_class='multinomial', solver='lbfgs', max_iter=200): "Logistic Regression",
-                  SGDClassifier(): "Support Vector Machine",
-                  RandomForestClassifier(): "Random Forest",
-                 }
-    clip_counts_dict = {True: "with clip counts",
-                        False: "no clip counts",
-                       }
-    ngram_size_dict = {1: "Unigram",
-                       2: "Bigram",
-                       3: "Trigram",
-                      }
+    # set up the dataframe we output with the evaluation summary statistics
+    fold_eval_df = pd.DataFrame(columns=['fold_no', 'fold_time', 'fold_accuracy'], index=range(len(train_test_tuples)))
 
-    # Define the models with the varying parameters
-    models_to_compare = define_models_with_params(model_dict, ngram_size_dict, clip_counts_dict)
+    # iterate through the cross validation train-test sets
+    fold_accuracies, fold_durations = [], []
+    eval_start = time.time()
+    for i, (train_data, test_data) in enumerate(train_test_tuples):
+        iteration_start = time.time()
+        if fold_verbose:
+            print("   Fold {}".format(i + 1), end="")
 
-    # Train & test these models to compare them
-    eval_df = pd.DataFrame()
-    for model_name, model in tqdm(models_to_compare.items()):
-        print("\n" + model_name)
-        model_eval_df = evaluate_model(model_name, model, train_test_splits, fold_verbose=False, plot_folds=True)
-        eval_df = pd.concat([eval_df, model_eval_df], axis=0).reset_index(drop=True)
+        # train the model on each set as we iterate
+        model.train(train_data)
+
+        # get an accuracy score for the trained model
+        predictions = model.predict(test_data)
+        accuracy, _ = evaluate_predictions(test_data, predictions)
+        fold_accuracies.append(accuracy)
+        iteration_duration = time.time() - iteration_start
+
+        # add the results from this fold to the fold evalutation dataframe
+        fold_eval_df.loc[i, 'fold_no'] = i + 1
+        fold_eval_df.loc[i, 'fold_time'] = iteration_duration
+        fold_eval_df.loc[i, 'fold_accuracy'] = accuracy
+
+        # output the model accuracy if requested
+        if fold_verbose:
+            print(" - {} seconds --> Accuracy score = {}".format(round(iteration_duration), accuracy))
+
+    # plot the fold evaluation results if requested
+    if plot_folds:
+        plot_fold_eval_scores(fold_eval_df)
+
+    # create the evalutation summary statistics for this model
+    n = float(len(fold_accuracies))
+    avg = sum(fold_accuracies) / n
+    variance = sum([(x-avg)**2 for x in fold_accuracies]) / n
+    eval_duration = time.time() - eval_start
+
+    # create a datframe with one row summarising the model evaluation
+    eval_values = {'Full Name': full_name,
+                   'Data Type': data_type,
+                   'Ngram': ngram,
+                   'Model': model_name,
+                   'Clip Counts': clip_counts,
+                   'Avg Accuracy': avg,
+                   'Accuracy Std Dev': variance**0.5,
+                   'Min Accuracy': min(fold_accuracies),
+                   'Max Accuracy': max(fold_accuracies),
+                   'Total Time (s)': round(eval_duration, 2),
+                   'All Fold Averages': str(fold_accuracies)
+                  }
+
+    return pd.DataFrame(eval_values, index=[0])
+
+
+def read_in_all_model_evaluation_results(folder_with_model_results):
+
+    """
+    Read in all the model evaluation files in the given folder and add them to a pandas dataframe
+
+    Params:
+        folder_with_model_results: string - the filepath to the folder that contains the files of the model evaluation results
+
+    Returns:
+        dataframe - this dataframe contains a row for each trained model and columns detailing this models parameters and its evaluation results
+    """
+
+    # define the order of the columns
+    all_models_results = pd.DataFrame(columns=["Full Name", "Data Type", "Ngram", "Model", "Clip Counts"])
+
+    # iterate through each file in the specified folder
+    for file in os.listdir(folder_with_model_results):
+        # add the eval results for this model to a dataframe of all results
+        model_results = pd.read_csv(os.path.join(folder_with_model_results, file))
+        all_models_results = pd.concat([all_models_results, model_results], axis=0).reset_index(drop=True)
+
+    return all_models_results
+
+
+def compare_param_plot(all_models_df, param_colname, base_param_value, compare_param_value):
+
+    """
+    Plot the accuracy scores of different trained models using a base parameter value VS a changed parameter value
+
+    Params:
+        all_models_df: dataframe - a dataframe containing all the trained models results and the details of their parameters
+        param_colname: string - the name of the parameter that we want to compare the baseline with a changed value
+        base_param_value: string/int/boolean - this is the baseline parameter value in the specified column
+        compare_param_value: string/int/boolean - this is the changed parameter value in the specified column
+
+    Returns:
+        None
+    """
+
+    # subset the input dataframe to the rows with and without the counts clipped
+    base_param_df = all_models_df[all_models_df[param_colname] == base_param_value]
+    compare_param_df = all_models_df[all_models_df[param_colname] == compare_param_value]
+
+    # create the figure to plot on
+    fig = plt.figure(figsize=(12, 12))
+    if type(base_param_value) == bool and type(compare_param_value) == bool:
+        plt.title("Comparing model accuracy with and without '{}'".format(param_colname), fontsize=20)
+    else:
+        plt.title("{} - Comparing the accuracy of {} VS {}".format(param_colname, base_param_value, compare_param_value), fontsize=20)
+    plt.xlabel('Models', fontsize=16)
+    plt.ylabel('Accuracy', fontsize=16)
+
+    # iterate through the models and plot the accuracy with and without the counts clipped
+    for model_num, (_, base_row) in enumerate(base_param_df.iterrows()):
+
+        # subset the row from the param_2_df dataframe that has the same model parameters as our row from the param_1_df dataframe (except the specified boolean column)
+        cols = ["Data Type", "Model", "Ngram", "Clip Counts"]
+        cols.remove(param_colname)
+        compare_row = compare_param_df
+        for col in cols:
+            compare_row = compare_row[compare_row[col] == base_row[col]]
+
+        if not compare_row.empty:
+            # get the differece between the two accuracies
+            base_acc = float(base_row["Avg Accuracy"])
+            compare_acc = float(compare_row.iloc[0]["Avg Accuracy"])
+            diff = compare_acc - base_acc
             
-    # Store the model results in a CSV
-    filepath = os.path.join("data", "model_evaluation_scores.csv")
-    eval_df.to_csv(filepath, index=False)
+            # plot the accuracies and the difference between them
+            plt.scatter(model_num, base_acc, color="blue")
+            plt.scatter(model_num, compare_acc, color="orange")
 
+            #if diff > 0.001:
+            plt.annotate(text='', xy=(model_num, base_acc), xytext=(model_num, compare_acc), arrowprops=dict(arrowstyle='<-'))
+            plt.annotate(text=str(round(diff*100, 4))+"%", xy=(model_num+0.1, base_acc + (diff/2)))
 
-if __name__ == '__main__':
-    main()
+    # Add a legend to the plot
+    if type(base_param_value) == bool and type(compare_param_value) == bool:
+        legend = ["With "+param_colname, "Without "+param_colname] if base_param_value else ["Without "+param_colname, "With "+param_colname]
+    else:
+        legend = [base_param_value, compare_param_value]
+    plt.legend(legend, loc="lower right")
+
