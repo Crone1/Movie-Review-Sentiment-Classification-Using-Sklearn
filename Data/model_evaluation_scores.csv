@@ -1,2 +1,0 @@
-Model,Avg Accuracy,Root Mean Squared Error,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
-Unigram Random Forest with clip counts,0.8115,0.022141589825484503,0.78,0.86,135.57,"[0.79, 0.78, 0.825, 0.805, 0.79, 0.825, 0.805, 0.81, 0.825, 0.86]"
