@@ -29,6 +29,12 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 
+# packages for sentiment lexicon
+from nltk.corpus import opinion_lexicon
+
+# for sorting the column
+from pandas.api.types import CategoricalDtype
+
 
 def get_download_folder():
 
@@ -339,23 +345,27 @@ def count_docs_in_train_test_split(train_test_splits):
     return num_docs_in_split
 
 
-
 # -----------------------------
 # Class to define the model
 # -----------------------------
 
 class Model:
     
-    def __init__(self, model, clip_counts=True, ngram_size=1):
+    def __init__(self, model, ngram_size=1, clip_counts=True, add_sent_lex_feat=False):
 
         # define the variables needed to train the model
         self.vocab = set()
         self.token_to_vocab_index_dict = {}
 
+        # define a list of positive and negative lexicons using an installed package
+        self.pos_lex_set = set(opinion_lexicon.positive())
+        self.neg_lex_set = set(opinion_lexicon.negative())
+
         # define the parameters of this model instance
         self.model = model
-        self.clip_counts = clip_counts
         self.ngram_size = ngram_size
+        self.clip_counts = clip_counts
+        self.add_sent_lex_feat = add_sent_lex_feat
 
 
     def extract_document_features(self, data_with_labels):
@@ -373,13 +383,20 @@ class Model:
         '''
 
         # create numpy array of required size
-        columns = len(self.vocab)
+        columns = len(self.vocab) + (2 if self.add_sent_lex_feat else 0)
         rows = len(data_with_labels)
         feature_matrix = np.zeros((rows, columns), dtype=np.int32)
 
         # Populate feature matrix
         for doc_index, (document, _) in enumerate(data_with_labels):
             for sentence in document:
+
+                if self.add_sent_lex_feat:
+                    # add the sentiment lexicon features - these are unaffected by the clip counts
+                    pos_sent_count, neg_sent_count = get_sentence_sentiment(sentence, self.pos_lex_set, self.neg_lex_set)
+                    feature_matrix[doc_index, -1] += pos_sent_count
+                    feature_matrix[doc_index, -2] += neg_sent_count
+
                 for i in range(len(sentence) - (self.ngram_size - 1)):
                     # get each word pattern of size 'self.ngram_size'
                     token = " ".join(sentence[i: i+self.ngram_size])
@@ -463,6 +480,30 @@ class Model:
                 labels.append('neg')
 
         return labels
+
+
+def get_sentence_sentiment(sentence, pos_lex_set, neg_lex_set):
+
+    """
+    Take in a sentence and count the number o positive tokens and the number of negative tokens in this sentence
+    
+    Params:
+        sentence: string - a sentence that we want to analyse the sentiment of
+        pos_lex_set: set of strings - a list of positive lexicons
+        neg_lex_set: set of strings - a list of the negative lexicons
+
+    Returns:
+        tuple of integers - (# positive wokens in the sentence, # positive wokens in the sentence)
+    """
+
+    pos_sent = neg_sent = 0
+    for word in sentence:
+        if word in pos_lex_set:
+            pos_sent += 1
+        elif word in neg_lex_set:
+            neg_sent += 1
+
+    return pos_sent, neg_sent
 
 
 def get_targets(data_with_labels):
@@ -549,7 +590,7 @@ def print_first_n_predictions(model, test_data, num_predictions, len_preview):
     return pred_df.reset_index(drop=True)
 
 
-def define_models_with_params(model_dict, data_dict, ngram_size_dict, clip_counts_vals):
+def define_models_with_params(model_dict, data_dict, ngram_size_dict, clip_counts_vals, sent_lex_vals):
 
     """
     1. Take in multiple dictionaries and lists of the different values that can occur with different model parameters
@@ -561,10 +602,11 @@ def define_models_with_params(model_dict, data_dict, ngram_size_dict, clip_count
         data_dict: dictionary {tuple, list} - maps the cross validation fold & document label to the documents that fall under this fold & label pair
         ngram_size_dict: dictionary {str: int} - map the name of an ngram size to an integer of the number of tokens contained in that ngram
         clip_counts_vals: list - this list contains a list of the boolean values we want to test for whether to clip the word counts or not
+        sent_lex_vals: list - this list contains a list of the boolean values we want to test for whether to add a sentiment lexicon feature to the extracted features or not
 
     Returns:
-        list of tuples - the tuples contain a dictionary of the models parameters and an instance of the model class with these parameters
-                       - [(parameter dictionary, instance of model class), ....]
+        list of tuples - the tuples contain a dictionary of the models parameters, the data to use, and an instance of the model class with these parameters
+                       - [(parameter dictionary, data to use, instance of model class), ....]
     """
 
     # iterate through all the combinations of parameters for these models
@@ -573,18 +615,19 @@ def define_models_with_params(model_dict, data_dict, ngram_size_dict, clip_count
         for data_type_name, data in data_dict.items():
             for ngram_size_name, ngram_size in ngram_size_dict.items():
                 for clip_count_bool in clip_counts_vals:
+                    for sent_lex_bool in sent_lex_vals:
 
-                    # define a model name using all the parameters
-                    model_full_name = '{} {} {} (ClipCounts={})'.format(data_type_name, ngram_size_name, model_to_use_name, clip_count_bool)
+                        # define a model name using all the parameters
+                        model_full_name = '{} {} {} (ClipCounts={}, SentLexFeature={})'.format(data_type_name, ngram_size_name, model_to_use_name, clip_count_bool, sent_lex_bool)
 
-                    # create a dictionary mapping these models parameter names to their values
-                    params_dict = {"full_name":model_full_name, "model_name": model_to_use_name, "data_type": data_type_name, "ngram": ngram_size_name, "clip_counts": clip_count_bool}
+                        # create a dictionary mapping these models parameter names to their values
+                        params_dict = {"full_name":model_full_name, "model_name": model_to_use_name, "data_type": data_type_name, "ngram": ngram_size_name, "clip_counts": clip_count_bool, "sent_lex_feat": sent_lex_bool}
 
-                    # define the model for these parameters
-                    model_instance = Model(model=model_to_use, clip_counts=clip_count_bool, ngram_size=ngram_size)
+                        # define the model for these parameters
+                        model_instance = Model(model=model_to_use, ngram_size=ngram_size, clip_counts=clip_count_bool, add_sent_lex_feat=sent_lex_bool)
 
-                    # create a list of tuples - [(parameter dictionary, instance of model class), ....]
-                    models_to_compare.append((params_dict, model_instance))
+                        # create a list of tuples - [(parameter dictionary, data to use, instance of model class), ....]
+                        models_to_compare.append((params_dict, data, model_instance))
 
     print("============================================================================================================")
     print("| There are a total of {} models that have been defined through different combinations of these parameters.|".format(len(models_to_compare)))
@@ -640,10 +683,11 @@ def evaluate_model(model, model_params, train_test_tuples, fold_verbose=False, p
 
     # extract the parameters
     full_name = model_params["full_name"]
+    data_type = model_params["data_type"]
     ngram = model_params["ngram"]
     model_name = model_params["model_name"]
     clip_counts = model_params["clip_counts"]
-    data_type = model_params["data_type"]
+    sent_lex_feat = model_params["sent_lex_feat"]
 
     # set up the dataframe we output with the evaluation summary statistics
     fold_eval_df = pd.DataFrame(columns=['fold_no', 'fold_time', 'fold_accuracy'], index=range(len(train_test_tuples)))
@@ -690,6 +734,7 @@ def evaluate_model(model, model_params, train_test_tuples, fold_verbose=False, p
                    'Ngram': ngram,
                    'Model': model_name,
                    'Clip Counts': clip_counts,
+                   'Sentiment Lexicon Feature': sent_lex_feat,
                    'Avg Accuracy': avg,
                    'Accuracy Std Dev': variance**0.5,
                    'Min Accuracy': min(fold_accuracies),
@@ -714,7 +759,7 @@ def read_in_all_model_evaluation_results(folder_with_model_results):
     """
 
     # define the order of the columns
-    all_models_results = pd.DataFrame(columns=["Full Name", "Data Type", "Ngram", "Model", "Clip Counts"])
+    all_models_results = pd.DataFrame(columns=["Full Name", "Data Type", "Model", "Ngram", "Clip Counts", "Sentiment Lexicon Feature"])
 
     # iterate through each file in the specified folder
     for file in os.listdir(folder_with_model_results):
@@ -722,19 +767,107 @@ def read_in_all_model_evaluation_results(folder_with_model_results):
         model_results = pd.read_csv(os.path.join(folder_with_model_results, file))
         all_models_results = pd.concat([all_models_results, model_results], axis=0).reset_index(drop=True)
 
-    return all_models_results
+    # make the model column into a categorical so I can order it better
+    order = CategoricalDtype(['Multinomial Naive Bayes', 'Random Forest Classifier', 'Logistic Regression', 'Support Vector Machine', 'Stochastic Gradient Descent Classifier', 'Decision Tree'], ordered=True)
+    all_models_results['Model'] = all_models_results['Model'].astype(order)
+
+    sorted_df = all_models_results.sort_values(by=["Data Type", "Model", "Ngram", "Clip Counts", "Sentiment Lexicon Feature"]).reset_index(drop=True)
+
+    print("A total of", len(sorted_df), "models have been run.")
+    print("The total time it took to evaluate these models was", round(sum(sorted_df["Total Time (s)"])/3600), "hours.")
+
+    return sorted_df
 
 
-def compare_param_plot(all_models_df, param_colname, base_param_value, compare_param_value):
+def compare_models_plot(all_models_df, param_colname, base_param_value, min_max_boundaries=False):
 
     """
-    Plot the accuracy scores of different trained models using a base parameter value VS a changed parameter value
+    Plot the accuracy scores of different trained models comparing a base parameter value in a column to all the other values in that column
 
     Params:
         all_models_df: dataframe - a dataframe containing all the trained models results and the details of their parameters
         param_colname: string - the name of the parameter that we want to compare the baseline with a changed value
         base_param_value: string/int/boolean - this is the baseline parameter value in the specified column
         compare_param_value: string/int/boolean - this is the changed parameter value in the specified column
+        min_max_boundaries: boolean - this is whether you want to plot the minimum and maximum averages of the specified model across all the folds
+
+    Returns:
+        None
+    """
+
+    # subset the input dataframe to the rows with and without the counts clipped
+    base_param_df = all_models_df[all_models_df[param_colname] == base_param_value]
+    compare_param_df = all_models_df[all_models_df[param_colname] != base_param_value]
+
+    # define the figureset
+    fig = plt.figure(figsize=(12, 12))
+    gs = fig.add_gridspec(nrows=len(compare_param_df), hspace=0)
+    axis = gs.subplots(sharex=True)
+
+    # set the title and x/y-axis labels
+    axis[0].set_title("Comparing the {} {} to the other {}s".format(base_param_value, param_colname, param_colname), size=20, pad=10)
+    plt.xlabel('Accuracy', fontsize=16)
+
+    # set the x-axis limits based on the minimum and maximum averages
+    base_min_acc, base_max_acc = min(base_param_df["Avg Accuracy"]), max(base_param_df["Avg Accuracy"])
+    comp_min_acc, comp_max_acc = min(compare_param_df["Avg Accuracy"]), max(compare_param_df["Avg Accuracy"])
+    global_min_acc = comp_min_acc - 0.02 if comp_min_acc < base_min_acc else base_min_acc  
+    global_max_acc = comp_max_acc + 0.02 if comp_max_acc > base_max_acc else base_max_acc
+    plt.xlim(global_min_acc - 0.01, global_max_acc + 0.01)
+
+    # iterate through the subplots and define their plots
+    for ax, (index, comparison_row) in zip(axis, compare_param_df.iterrows()):
+
+        # set the axes row names
+        ax.set_ylabel(comparison_row[param_colname], size=16, rotation='horizontal', ha='right', labelpad=10)
+        ax.set_yticks([])
+
+        # subset the row from the base dataframe that has the same configuration as our comparison row except for the specified parameter
+        cols = ["Data Type", "Model", "Ngram", "Clip Counts", "Sentiment Lexicon Feature"]
+        cols.remove(param_colname)
+        base_row = base_param_df
+        for col in cols:
+            base_row = base_row[base_row[col] == comparison_row[col]]
+
+        # get the accuracy values for the models for the baseline models and the difference between them
+        base_acc = float(base_row.iloc[0]["Avg Accuracy"])
+        compare_acc = float(comparison_row["Avg Accuracy"])
+        diff = compare_acc - base_acc
+
+        # plot the accuracies and the difference between them
+        ax.scatter(base_acc, comparison_row[param_colname], color="blue")
+        ax.scatter(compare_acc, comparison_row[param_colname], color="orange")
+        ax.grid(axis="x")
+
+        if min_max_boundaries:
+            # add the min and max accuracy indicators
+            plt.annotate(text='|', xy=(float(base_row["Min Accuracy"]), model_num), color="blue")
+            plt.annotate(text='|', xy=(float(base_row["Max Accuracy"]), model_num), color="blue")
+            plt.annotate(text='|', xy=(float(compare_row.iloc[0]["Min Accuracy"]), model_num), color="orange")
+            plt.annotate(text='|', xy=(float(compare_row.iloc[0]["Max Accuracy"]), model_num), color="orange")
+
+
+        # add the arrows showing the change to the plot
+        ax.annotate(text='', xy=(base_acc, comparison_row[param_colname]), xytext=(compare_acc, comparison_row[param_colname]), arrowprops=dict(arrowstyle='<-'))
+
+        # add the % increase/decrease of the models to the plot
+        if diff > 0:
+            ax.annotate(text=str(round(diff*100, 4))+"%", xy=(compare_acc + 0.003, comparison_row[param_colname]), ha="left")
+        elif diff < 0:
+            ax.annotate(text=str(round(diff*100, 4))+"%", xy=(compare_acc - 0.003, comparison_row[param_colname]), ha="right")
+
+
+def compare_param_plot(all_models_df, param_colname, base_param_value, compare_param_value, min_max_boundaries=False):
+
+    """
+    Plot the accuracy scores of different trained models using a base parameter value VS a changed parameter value in a specified column
+
+    Params:
+        all_models_df: dataframe - a dataframe containing all the trained models results and the details of their parameters
+        param_colname: string - the name of the parameter that we want to compare the baseline with a changed value
+        base_param_value: string/int/boolean - this is the baseline parameter value in the specified column
+        compare_param_value: string/int/boolean - this is the changed parameter value in the specified column
+        min_max_boundaries: boolean - this is whether you want to plot the minimum and maximum averages of the specified model across all the folds
 
     Returns:
         None
@@ -744,38 +877,71 @@ def compare_param_plot(all_models_df, param_colname, base_param_value, compare_p
     base_param_df = all_models_df[all_models_df[param_colname] == base_param_value]
     compare_param_df = all_models_df[all_models_df[param_colname] == compare_param_value]
 
+    # reverse the rows of this dataframe - so that the baseline comes at the top
+    base_param_df = base_param_df.reindex(index=base_param_df.index[::-1])
+    compare_param_df = compare_param_df.reindex(index=compare_param_df.index[::-1])
+
     # create the figure to plot on
     fig = plt.figure(figsize=(12, 12))
+    plt.grid(axis='x')
     if type(base_param_value) == bool and type(compare_param_value) == bool:
         plt.title("Comparing model accuracy with and without '{}'".format(param_colname), fontsize=20)
     else:
         plt.title("{} - Comparing the accuracy of {} VS {}".format(param_colname, base_param_value, compare_param_value), fontsize=20)
-    plt.xlabel('Models', fontsize=16)
-    plt.ylabel('Accuracy', fontsize=16)
+    plt.xlabel('Accuracy', fontsize=16)
+
+    # set the x-axis limits based on the minimum and maximum averages
+    base_min_acc, base_max_acc = min(base_param_df["Avg Accuracy"]), max(base_param_df["Avg Accuracy"])
+    comp_min_acc, comp_max_acc = min(compare_param_df["Avg Accuracy"]), max(compare_param_df["Avg Accuracy"])
+    global_min_acc = comp_min_acc - 0.02 if comp_min_acc < base_min_acc else base_min_acc  
+    global_max_acc = comp_max_acc + 0.02 if comp_max_acc > base_max_acc else base_max_acc
+    plt.xlim(global_min_acc - 0.01, global_max_acc + 0.01)
 
     # iterate through the models and plot the accuracy with and without the counts clipped
-    for model_num, (_, base_row) in enumerate(base_param_df.iterrows()):
+    plotted_models = []
+    model_num = 0
+    for _, base_row in base_param_df.iterrows():
 
-        # subset the row from the param_2_df dataframe that has the same model parameters as our row from the param_1_df dataframe (except the specified boolean column)
-        cols = ["Data Type", "Model", "Ngram", "Clip Counts"]
+        # subset the row from the comparison dataframe that has the same configuration as our base row except for the specified parameter
+        cols = ["Data Type", "Model", "Ngram", "Clip Counts", "Sentiment Lexicon Feature"]
         cols.remove(param_colname)
         compare_row = compare_param_df
         for col in cols:
             compare_row = compare_row[compare_row[col] == base_row[col]]
 
         if not compare_row.empty:
+            plotted_models.append(compare_row.iloc[0]["Model"])
+
             # get the differece between the two accuracies
             base_acc = float(base_row["Avg Accuracy"])
             compare_acc = float(compare_row.iloc[0]["Avg Accuracy"])
             diff = compare_acc - base_acc
             
             # plot the accuracies and the difference between them
-            plt.scatter(model_num, base_acc, color="blue")
-            plt.scatter(model_num, compare_acc, color="orange")
+            plt.scatter(base_acc, model_num, color="blue")
+            plt.scatter(compare_acc, model_num, color="orange")
 
-            #if diff > 0.001:
-            plt.annotate(text='', xy=(model_num, base_acc), xytext=(model_num, compare_acc), arrowprops=dict(arrowstyle='<-'))
-            plt.annotate(text=str(round(diff*100, 4))+"%", xy=(model_num+0.1, base_acc + (diff/2)))
+            if min_max_boundaries:
+                # add the min and max accuracy indicators
+                plt.annotate(text='|', xy=(float(base_row["Min Accuracy"]), model_num), color="blue")
+                plt.annotate(text='|', xy=(float(base_row["Max Accuracy"]), model_num), color="blue")
+                plt.annotate(text='|', xy=(float(compare_row.iloc[0]["Min Accuracy"]), model_num), color="orange")
+                plt.annotate(text='|', xy=(float(compare_row.iloc[0]["Max Accuracy"]), model_num), color="orange")
+
+            # add the arrows showing the change to the plot
+            plt.annotate(text='', xy=(base_acc, model_num), xytext=(compare_acc, model_num), arrowprops=dict(arrowstyle='<-'))
+
+            # add the % increase/decrease of the models to the plot
+            if diff > 0:
+                plt.annotate(text=str(round(diff*100, 4))+"%", xy=(compare_acc + 0.003, model_num), ha="left")
+            elif diff < 0:
+                plt.annotate(text=str(round(diff*100, 4))+"%", xy=(compare_acc - 0.003, model_num), ha="right")
+
+            model_num += 1
+
+    # Add the y ticks to this plot
+    plt.yticks(ticks=range(len(plotted_models)), labels=plotted_models, size=18)
+    plt.figure(num=1, figsize=(12, len(plotted_models) * 1.5))
 
     # Add a legend to the plot
     if type(base_param_value) == bool and type(compare_param_value) == bool:
@@ -784,3 +950,24 @@ def compare_param_plot(all_models_df, param_colname, base_param_value, compare_p
         legend = [base_param_value, compare_param_value]
     plt.legend(legend, loc="lower right")
 
+
+def add_value_labels(ax):
+
+    """
+    Add labels to the end of each bar in a bar chart.
+
+    Params:
+        ax: matplotlib.axes.Axes - The matplotlib object containing the axes of the plot to annotate.
+    
+    Returns:
+        None
+    """
+
+    # For each bar: Place a label
+    for rect in ax.patches:
+        # Get X and Y placement of label from rect.
+        y_value = rect.get_y() + rect.get_height() / 2
+        x_value = rect.get_width()
+
+        # Create annotation
+        ax.annotate(text='{}%'.format(round(x_value * 100, 2)), xy=(x_value, y_value), xytext=(2, -3.5), textcoords="offset points", ha='left')
