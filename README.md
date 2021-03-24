@@ -1,6 +1,7 @@
 # Overview
 
 This repository contains my submission for assignment 2 in the module Natural Language Processing.
+This project looks at movie review sentiment classification using machine learning models and other natural language techniques.
 
 # Contents
 
