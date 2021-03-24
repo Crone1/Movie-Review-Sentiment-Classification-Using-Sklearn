@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Lemmatised Trigram Multinomial Naive Bayes (ClipCounts=True, SentLexFeature=False)",Lemmatised,Trigram,Multinomial Naive Bayes,True,False,0.784,0.017,0.755,0.82,1417.06,"[0.82, 0.795, 0.77, 0.755, 0.78, 0.785, 0.785, 0.8, 0.775, 0.775]"

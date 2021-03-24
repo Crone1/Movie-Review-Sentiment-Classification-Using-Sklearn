@@ -1,2 +1,0 @@
-Full Name,Data Type,Ngram,Model,Clip Counts,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
-Original Unigram Support Vector Machine (ClipCounts=False),Original,Unigram,Support Vector Machine,False,0.7405,0.043153795,0.67,0.815,699.36,"[0.735, 0.775, 0.67, 0.745, 0.74, 0.77, 0.815, 0.67, 0.765, 0.72]"

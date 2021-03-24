@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Lemmatised Bigram Decision Tree (ClipCounts=True, SentLexFeature=False)",Lemmatised,Bigram,Decision Tree,True,False,0.6220000000000001,0.045891175622335,0.535,0.695,1492.69,"[0.535, 0.585, 0.64, 0.6, 0.65, 0.585, 0.68, 0.61, 0.64, 0.695]"

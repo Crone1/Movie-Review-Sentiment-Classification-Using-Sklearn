@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Original Bigram Logistic Regression (ClipCounts=True, SentLexFeature=False)",Original,Bigram,Logistic Regression,True,False,0.8355,0.0201804360706105,0.795,0.87,700.16,"[0.84, 0.87, 0.81, 0.84, 0.795, 0.83, 0.84, 0.83, 0.855, 0.845]"

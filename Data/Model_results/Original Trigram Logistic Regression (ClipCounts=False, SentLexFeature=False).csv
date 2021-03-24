@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Original Trigram Logistic Regression (ClipCounts=False, SentLexFeature=False)",Original,Trigram,Logistic Regression,False,False,0.7710000000000001,0.0248797106092494,0.715,0.81,1100.54,"[0.715, 0.79, 0.78, 0.775, 0.76, 0.785, 0.75, 0.76, 0.81, 0.785]"

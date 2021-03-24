@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Original Unigram Logistic Regression (ClipCounts=False, SentLexFeature=False)",Original,Unigram,Logistic Regression,False,False,0.8494999999999999,0.0176705970470723,0.825,0.875,1013.37,"[0.825, 0.84, 0.845, 0.875, 0.835, 0.86, 0.87, 0.825, 0.85, 0.87]"

@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Lemmatised Bigram Stochastic Gradient Descent Classifier (ClipCounts=True, SentLexFeature=False)",Lemmatised,Bigram,Stochastic Gradient Descent Classifier,True,False,0.82,0.0242899156029822,0.79,0.87,400.15,"[0.79, 0.835, 0.825, 0.825, 0.79, 0.87, 0.835, 0.81, 0.79, 0.83]"

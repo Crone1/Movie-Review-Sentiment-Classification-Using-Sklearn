@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Original Bigram Support Vector Machine (ClipCounts=False, SentLexFeature=False)",Original,Bigram,Support Vector Machine,False,False,0.7515000000000001,0.0240883789408918,0.705,0.785,23308.67,"[0.785, 0.77, 0.725, 0.74, 0.705, 0.75, 0.76, 0.74, 0.785, 0.755]"

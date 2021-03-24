@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Negated Bigram Random Forest Classifier (ClipCounts=False, SentLexFeature=False)",Negated,Bigram,Random Forest Classifier,False,False,0.7615,0.037553295,0.685,0.815,1089.17,"[0.76, 0.775, 0.685, 0.75, 0.73, 0.815, 0.81, 0.73, 0.775, 0.785]"

@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Original Unigram Random Forest Classifier (ClipCounts=False, SentLexFeature=True)",Original,Unigram,Random Forest Classifier,False,True,0.8074999999999999,0.028482450737252207,0.76,0.845,152.56,"[0.82, 0.8, 0.76, 0.76, 0.8, 0.84, 0.835, 0.815, 0.8, 0.845]"

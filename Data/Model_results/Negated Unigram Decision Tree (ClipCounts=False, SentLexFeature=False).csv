@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Negated Unigram Decision Tree (ClipCounts=False, SentLexFeature=False)",Negated,Unigram,Decision Tree,False,False,0.6620000000000001,0.0221585198061603,0.62,0.695,199.34,"[0.665, 0.67, 0.635, 0.645, 0.66, 0.695, 0.675, 0.665, 0.62, 0.69]"

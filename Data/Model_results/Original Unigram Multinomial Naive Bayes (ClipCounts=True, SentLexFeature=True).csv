@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Original Unigram Multinomial Naive Bayes (ClipCounts=True, SentLexFeature=True)",Original,Unigram,Multinomial Naive Bayes,True,True,0.8324999999999999,0.013829316685939326,0.81,0.86,10589.21,"[0.82, 0.84, 0.84, 0.82, 0.835, 0.825, 0.845, 0.83, 0.81, 0.86]"

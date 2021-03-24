@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Original Unigram Support Vector Machine (ClipCounts=True, SentLexFeature=True)",Original,Unigram,Support Vector Machine,True,True,0.777,0.019773719933285184,0.745,0.815,2250.02,"[0.765, 0.765, 0.78, 0.815, 0.745, 0.76, 0.785, 0.775, 0.805, 0.775]"

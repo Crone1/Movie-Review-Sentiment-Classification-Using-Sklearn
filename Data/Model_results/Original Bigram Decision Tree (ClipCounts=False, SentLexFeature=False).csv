@@ -1,0 +1,2 @@
+Full Name,Data Type,Ngram,Model,Clip Counts,Sentiment Lexicon Feature,Avg Accuracy,Accuracy Std Dev,Min Accuracy,Max Accuracy,Total Time (s),All Fold Averages
+"Original Bigram Decision Tree (ClipCounts=False, SentLexFeature=False)",Original,Bigram,Decision Tree,False,False,0.623,0.027586228,0.58,0.685,1603.1,"[0.58, 0.6, 0.625, 0.62, 0.64, 0.615, 0.685, 0.6, 0.62, 0.645]"
