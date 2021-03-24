@@ -9,7 +9,7 @@ This notebook details my modelling process and uses the functions contained in t
 
 The Data folder contains the original data used in this modelling process but also contains the evaluation results of each of the models tested in this assignment.
 
-# Testing new data
+# Testing the model on new data
 
 To test the model on new data, it is a matter of switching out the original dataset in the *Data* folder or else changing the web link to the online dataset in the *.py* file.
 As long as this data file is in a similar format to the original dataset, the code will load it in and split it into a train and test split dataset.
